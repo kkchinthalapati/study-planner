@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import {
   RichTextEditor,
   type RichTextEditorHandle,
@@ -138,7 +139,7 @@ export function NotesEditorPane({
       : "<p>No notes yet — Learnora is still processing this material.</p>");
 
   return (
-    <main className={styles.view}>
+    <div className={styles.view}>
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
           <Button size="sm" onClick={() => void navigate(-1)}>
@@ -165,7 +166,7 @@ export function NotesEditorPane({
       </div>
 
       <div className={styles.splitLayout}>
-        <div className={styles.editorPane}>
+        <Card variant="elevated" padding="none" className={styles.editorPane}>
           <RichTextEditor
             ref={editorRef}
             initialHtml={initialHtml}
@@ -173,7 +174,7 @@ export function NotesEditorPane({
             placeholder="Start typing your notes here…"
             onUserChange={note ? handleUserChange : undefined}
           />
-        </div>
+        </Card>
 
         <NotesAiSidebar
           materialId={materialId}
@@ -184,6 +185,6 @@ export function NotesEditorPane({
           }
         />
       </div>
-    </main>
+    </div>
   );
 }

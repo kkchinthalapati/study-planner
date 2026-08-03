@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { Icon } from "../../components/Icon";
 import { Skeleton } from "../../components/Skeleton";
 import { useToast } from "../../context/toast";
@@ -45,29 +46,29 @@ export function QuizRunner() {
 
   if (isPending) {
     return (
-      <main className={styles.view} aria-busy="true">
+      <div className={styles.view} aria-busy="true">
         <Skeleton label="Loading quiz" height={220} />
-      </main>
+      </div>
     );
   }
 
   if (isError) {
     return (
-      <main className={styles.view}>
+      <div className={styles.view}>
         <ExitLink />
         <p role="alert" className={styles.loadError}>
           Could not load this quiz. {(error as Error).message}
         </p>
-      </main>
+      </div>
     );
   }
 
   if (!quiz) {
     return (
-      <main className={styles.view}>
+      <div className={styles.view}>
         <ExitLink />
         <h1>Quiz not found.</h1>
-      </main>
+      </div>
     );
   }
 
@@ -77,16 +78,16 @@ export function QuizRunner() {
      rendered "Question 1 of 0" and an empty choice list. */
   if (questions.length === 0) {
     return (
-      <main className={styles.view}>
-        <div className={styles.panel}>
+      <div className={styles.view}>
+        <Card variant="panel" padding="lg" className={styles.panel}>
           <ExitLink />
           <h1>{quiz.title || "Quiz"}</h1>
           <p className={styles.muted}>
             This quiz has no usable questions. Generating it again should fix
             it.
           </p>
-        </div>
-      </main>
+        </Card>
+      </div>
     );
   }
 
@@ -154,8 +155,8 @@ function QuizSession({
   if (finished) {
     const weakTopics = weakTopicsFrom(answers);
     return (
-      <main className={styles.view}>
-        <div className={styles.panel}>
+      <div className={styles.view}>
+        <Card variant="panel" padding="lg" className={styles.panel}>
           <QuizHost
             message={`Finished! You got ${score} out of ${total}. Check your weak topics and keep studying!`}
           />
@@ -181,8 +182,8 @@ function QuizSession({
               Back to Quizzes
             </Link>
           </div>
-        </div>
-      </main>
+        </Card>
+      </div>
     );
   }
 
@@ -219,8 +220,8 @@ function QuizSession({
   }
 
   return (
-    <main className={styles.view}>
-      <div className={styles.panel}>
+    <div className={styles.view}>
+      <Card variant="panel" padding="lg" className={styles.panel}>
         {hostMessage ? (
           <QuizHost message={hostMessage} tone={hostTone} />
         ) : null}
@@ -265,7 +266,7 @@ function QuizSession({
             </Button>
           </div>
         ) : null}
-      </div>
-    </main>
+      </Card>
+    </div>
   );
 }

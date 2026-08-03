@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Button } from "../../components/Button";
+import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { Icon } from "../../components/Icon";
 import type { IconName } from "../../components/icons";
@@ -50,14 +51,14 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className={styles.workspaceSection}>
+    <Card as="section" variant="elevated" padding="md">
       <h2 className={styles.sectionTitle}>
         <Icon name={icon} size={18} />
         {title}
       </h2>
       <p className={styles.sectionHint}>{hint}</p>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -84,15 +85,15 @@ export function SubjectDetailPage() {
 
   if (folders.isPending) {
     return (
-      <main className={styles.view} aria-busy="true">
+      <div className={styles.view} aria-busy="true">
         <Skeleton label="Loading this subject" height={240} />
-      </main>
+      </div>
     );
   }
 
   if (!folder) {
     return (
-      <main className={styles.view}>
+      <div className={styles.view}>
         <div className={styles.workspaceHeader}>
           <Link to="/library" className={styles.backLink}>
             ← Back to Library
@@ -111,12 +112,12 @@ export function SubjectDetailPage() {
             Back to Library
           </Button>
         </EmptyState>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className={styles.view}>
+    <div className={styles.view}>
       <div className={styles.workspaceHeader}>
         <Link to="/library" className={styles.backLink}>
           ← Back to Library
@@ -252,6 +253,6 @@ export function SubjectDetailPage() {
           )}
         </Section>
       </div>
-    </main>
+    </div>
   );
 }
