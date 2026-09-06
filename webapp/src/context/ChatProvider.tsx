@@ -426,6 +426,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const { text } = await callEdge({
           history: [...priorHistory, { role: "user", content: systemContext }],
           file: filePayload,
+          tool: "chat",
           settings,
         });
 

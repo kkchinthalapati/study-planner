@@ -32,7 +32,13 @@ export function useSubscription() {
 
 export interface Entitlements {
   plan: Plan;
+  /** True only on the top tier — gates the handful of binary features that
+   *  stay Pro-exclusive (Trajectory, calendar import, …). A Plus account
+   *  reads false here even though it is paying. */
   isPro: boolean;
+  /** True on either paid tier. What most "are they a paying customer" UI
+   *  (billing status, the upsell CTA) should actually ask. */
+  isPaid: boolean;
   subscription: Subscription;
   /** True while the plan is still being read. Gates should not slam shut
    *  during this — see `useEntitlements`' comment. */
@@ -50,6 +56,7 @@ export function useEntitlements(): Entitlements {
   return {
     plan,
     isPro: plan === "pro",
+    isPaid: plan !== "free",
     subscription,
     isPending,
     /* While the plan is loading this reports the free answer, and every gate
@@ -67,8 +74,13 @@ export function useEntitlements(): Entitlements {
  *  error handling for free, like every other write in the app. */
 export function useStartCheckout() {
   return useMutation({
-    mutationFn: (price: "monthly" | "annual") =>
-      billingApi.createCheckoutSession(price),
+    mutationFn: ({
+      plan,
+      period,
+    }: {
+      plan: "plus" | "pro";
+      period: "monthly" | "annual";
+    }) => billingApi.createCheckoutSession(plan, period),
   });
 }
 

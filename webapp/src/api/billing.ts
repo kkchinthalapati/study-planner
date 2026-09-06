@@ -121,13 +121,17 @@ export const billingApi = {
     return toSubscription(data as ProfileBillingRow | null);
   },
 
-  /** A Stripe Checkout URL for the chosen price. The caller navigates to it;
-   *  Stripe sends the student back to `/app/settings` either way, and the plan
-   *  only actually changes when the webhook fires. */
-  async createCheckoutSession(priceId: "monthly" | "annual"): Promise<string> {
+  /** A Stripe Checkout URL for the chosen plan and billing period. The caller
+   *  navigates to it; Stripe sends the student back to `/app/settings` either
+   *  way, and the plan only actually changes when the webhook fires. */
+  async createCheckoutSession(
+    plan: "plus" | "pro",
+    period: "monthly" | "annual",
+  ): Promise<string> {
     const { url } = await callBilling<{ url: string }>({
       action: "checkout",
-      price: priceId,
+      plan,
+      period,
       returnUrl: `${window.location.origin}/app/settings`,
     });
     return url;

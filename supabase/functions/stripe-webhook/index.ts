@@ -57,6 +57,41 @@ function toPlanStatus(status: string): PlanStatus {
    should not delete someone's revision plan mid-exam-week. */
 const ENTITLING: PlanStatus[] = ["active", "trialing", "past_due"];
 
+type PaidPlan = "plus" | "pro";
+
+/** Every Stripe price id that should grant Plus or Pro, keyed by the same
+ *  four env vars `stripe-billing` reads to send someone to checkout. The
+ *  price actually on the subscription is the source of truth for which plan
+ *  it is — it is what Stripe is really charging, and cannot drift from
+ *  itself the way a hand-typed metadata field could (a subscription created
+ *  from the Stripe dashboard, or an old checkout session, might carry none at
+ *  all). `metadata.plan` (stamped at checkout — see stripe-billing) is only
+ *  the fallback for exactly that case. */
+function planByPriceId(): Record<string, PaidPlan> {
+  const map: Record<string, PaidPlan> = {};
+  for (const plan of ["plus", "pro"] as const) {
+    for (const period of ["monthly", "annual"] as const) {
+      const id = Deno.env.get(
+        `STRIPE_PRICE_${plan.toUpperCase()}_${period.toUpperCase()}`,
+      );
+      if (id) map[id] = plan;
+    }
+  }
+  return map;
+}
+
+/** Which plan a subscription is actually on. Falls back to "plus" — the
+ *  cheaper of the two — when neither the price id nor the metadata resolves,
+ *  which can only happen for a subscription created by hand outside Checkout
+ *  with a price this deployment's env vars do not list; under-granting the
+ *  cheaper tier is the safe direction, over-granting Pro is not. */
+function resolvePlan(sub: Stripe.Subscription): PaidPlan {
+  const priceId = sub.items.data[0]?.price?.id;
+  const byPrice = priceId ? planByPriceId()[priceId] : undefined;
+  if (byPrice) return byPrice;
+  return sub.metadata?.plan === "pro" ? "pro" : "plus";
+}
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -151,16 +186,17 @@ Deno.serve(async (req: Request) => {
 
     const status = toPlanStatus(sub.status);
     const periodEnd = sub.items.data[0]?.current_period_end;
+    const entitled = ENTITLING.includes(status);
 
     const { error } = await supabase
       .from("profiles")
       .update({
         /* The plan column is the *entitlement*, not what they bought: a
            cancelled subscription is still `plan: 'free'` here even though the
-           Stripe product is Pro, so every read in the app can trust one
-           column instead of re-deriving the rule. `plan_status` keeps the
+           Stripe product was Plus or Pro, so every read in the app can trust
+           one column instead of re-deriving the rule. `plan_status` keeps the
            detail for the billing screen. */
-        plan: ENTITLING.includes(status) ? "pro" : "free",
+        plan: entitled ? resolvePlan(sub) : "free",
         plan_status: status,
         plan_renews_at: periodEnd
           ? new Date(periodEnd * 1000).toISOString()

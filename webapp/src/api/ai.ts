@@ -11,6 +11,7 @@
 
 import { supabase, SUPABASE_URL } from "../lib/supabase";
 import type { Settings } from "../lib/settings";
+import type { AiToolId } from "../lib/entitlements";
 import { queryClient } from "../lib/queryClient";
 import { aiUsageKeys } from "./aiUsage";
 
@@ -54,6 +55,13 @@ export interface EdgePayload {
   mode?: EdgeMode;
   file?: FilePayload | null;
   settings?: Settings;
+  /** Which metered AI tool this call counts against (see `AI_TOOLS` in
+   *  entitlements.ts). Distinct from `mode`, which is only the response-shape
+   *  contract — several product features share a `mode` (pre-mortem, feynman
+   *  and the exam deconstructor all send `mode: "quiz"` purely for its JSON
+   *  parsing) but must still be billed as separate tools. Optional only for
+   *  callers not yet migrated; the edge function falls back to "chat". */
+  tool?: AiToolId;
 }
 
 export interface EdgeResult {

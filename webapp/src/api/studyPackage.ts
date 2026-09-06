@@ -187,6 +187,7 @@ export async function generateNotes({
     history: [{ role: "user", content: buildNotesPrompt(inlineText) }],
     file: attachment,
     mode: "notes",
+    tool: "notes",
     settings,
   });
 
@@ -246,6 +247,7 @@ export async function generateDeck({
   const { text } = await callEdge({
     history: [{ role: "user", content: buildDeckPrompt(sourceText, count) }],
     mode: "flashcards",
+    tool: "flashcards",
     settings,
   });
 

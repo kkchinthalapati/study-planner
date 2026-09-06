@@ -374,6 +374,7 @@ export async function generateWeeklyPlan(
       },
     ],
     mode: "plan",
+    tool: "plan",
     settings,
   });
 

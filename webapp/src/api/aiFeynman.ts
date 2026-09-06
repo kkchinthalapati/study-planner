@@ -915,6 +915,7 @@ Rules:
     const res = await callEdge({
       history: [{ role: "user", content: prompt }],
       mode: "quiz", // JSON structured format
+      tool: "feynman",
     });
 
     if (res.text && !res.refused) {
@@ -1031,7 +1032,7 @@ Output valid JSON only, matching this schema:
    * waiting out a second round trip to maybe get a better one is the wrong
    * trade here. */
   const res = await callEdge(
-    { history: [{ role: "user", content: prompt }], mode: "quiz" },
+    { history: [{ role: "user", content: prompt }], mode: "quiz", tool: "feynman" },
     undefined,
     0,
   );

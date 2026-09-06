@@ -210,6 +210,7 @@ Return a JSON array where each object has:
       const result = await callEdge({
         history: [{ role: "user", content: prompt }],
         mode: "quiz",
+        tool: "preMortem",
         settings,
       });
 
@@ -679,6 +680,7 @@ For each question, provide:
       const { text } = await callEdge({
         history: [{ role: "user", content: prompt }],
         mode: "quiz",
+        tool: "preMortem",
         settings,
       });
 

@@ -5,12 +5,8 @@ import { SUPABASE_URL } from "../lib/supabase";
 import { mockAuthSession } from "../test/mockSession";
 import { fetchDailyAiUsage, nextUtcDayStart, utcDayStart } from "./aiUsage";
 
-/** A `head: true` count comes back in the content-range header, not the body. */
-function countResponse(total: number) {
-  return new HttpResponse(null, {
-    status: 200,
-    headers: { "content-range": `0-0/${total}` },
-  });
+function rowsResponse(tools: (string | null)[]) {
+  return HttpResponse.json(tools.map((tool) => ({ tool })));
 }
 
 describe("utcDayStart / nextUtcDayStart", () => {
@@ -55,7 +51,7 @@ describe("fetchDailyAiUsage", () => {
     vi.useRealTimers();
   });
 
-  it("counts only this user's rows since midnight UTC", async () => {
+  it("buckets only this user's rows since midnight UTC, by tool", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-04T09:00:00Z"));
 
@@ -63,13 +59,13 @@ describe("fetchDailyAiUsage", () => {
     server.use(
       http.all(`${SUPABASE_URL}/rest/v1/ai_request_log`, ({ request }) => {
         url = new URL(request.url);
-        return countResponse(17);
+        return rowsResponse(["chat", "chat", "quiz", "chat"]);
       }),
     );
 
     const usage = await fetchDailyAiUsage();
 
-    expect(usage.used).toBe(17);
+    expect(usage.usedByTool).toEqual({ chat: 3, quiz: 1 });
     expect(usage.resetsAt).toBe("2026-09-05T00:00:00.000Z");
     expect(url?.searchParams.get("user_id")).toBe("eq.user-1");
     expect(url?.searchParams.get("created_at")).toBe(
@@ -77,13 +73,24 @@ describe("fetchDailyAiUsage", () => {
     );
   });
 
-  it("reports zero for a user who has generated nothing today", async () => {
+  it("bills a null tool (an unmigrated caller) to chat, matching the edge function's default", async () => {
     server.use(
       http.all(`${SUPABASE_URL}/rest/v1/ai_request_log`, () =>
-        countResponse(0),
+        rowsResponse([null, "chat"]),
       ),
     );
-    await expect(fetchDailyAiUsage()).resolves.toMatchObject({ used: 0 });
+    await expect(fetchDailyAiUsage()).resolves.toMatchObject({
+      usedByTool: { chat: 2 },
+    });
+  });
+
+  it("reports an empty bucket for a user who has generated nothing today", async () => {
+    server.use(
+      http.all(`${SUPABASE_URL}/rest/v1/ai_request_log`, () => rowsResponse([])),
+    );
+    await expect(fetchDailyAiUsage()).resolves.toMatchObject({
+      usedByTool: {},
+    });
   });
 
   /* Throwing matters: the hook renders "couldn't read your usage" on an

@@ -148,6 +148,7 @@ export async function generateQuizFrom({
       },
     ],
     mode: "quiz",
+    tool: "quiz",
     settings,
   });
 

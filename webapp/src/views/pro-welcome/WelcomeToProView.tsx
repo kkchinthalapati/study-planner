@@ -10,27 +10,36 @@ import {
   useRefreshSubscription,
 } from "../../hooks/useSubscription";
 import {
+  AI_TOOLS,
   FEATURES,
   PRO_FEATURES,
   QUOTAS,
   type FeatureId,
+  type Plan,
 } from "../../lib/entitlements";
 import styles from "./welcomeToPro.module.css";
 
-/* The Pro onboarding screen.
+/* The post-upgrade onboarding screen, for either paid plan.
  *
  * Two entry points, one screen: Stripe sends a freshly-paying student back to
  * `/app/settings?checkout=success`, and BillingTab forwards them straight
- * here. Everyone else reaches it on purpose, from the "See what's included"
- * link BillingTab shows once they're already Pro. Either way the content is
- * identical — this is not a sales pitch (that's PaywallModal's job), it's a
- * tour of what they now have.
+ * here regardless of which plan they bought. Everyone else reaches it on
+ * purpose, from the "See what's included" link BillingTab shows once they're
+ * already on a paid plan. Either way the content is identical for a given
+ * plan — this is not a sales pitch (that's PaywallModal's job), it's a tour
+ * of what they now have. Plus and Pro get different content: Plus bought
+ * more AI headroom and nothing else, so the feature grid (Trajectory,
+ * calendar import, …) only renders for Pro.
  *
- * The webhook that actually grants Pro can land a second or two after
+ * The webhook that actually grants the plan can land a second or two after
  * Stripe's redirect does, so arriving here mid-checkout means briefly
  * polling rather than trusting the first read — the same race BillingTab
  * already handles, done here so the "welcome" moment doesn't flash a
  * paywall at somebody who just paid. */
+
+/* A representative sample, not the full ten tools — enough to show the shape
+   of the jump without turning the welcome screen into a spreadsheet. */
+const HEADLINE_TOOLS = ["chat", "flashcards", "quiz"] as const;
 
 const FEATURE_ICON: Record<FeatureId, IconName> = {
   trajectory: "target",
@@ -106,11 +115,11 @@ function FeatureCard({ id }: { id: FeatureId }) {
 function QuotaRow({
   label,
   free,
-  pro,
+  value,
 }: {
   label: string;
   free: string;
-  pro: string;
+  value: string;
 }) {
   return (
     <li className={styles.quotaRow}>
@@ -119,13 +128,14 @@ function QuotaRow({
       <span className={styles.quotaArrow} aria-hidden="true">
         <Icon name="chevron-down" size={14} className={styles.quotaArrowIcon} />
       </span>
-      <span className={styles.quotaPro}>{pro}</span>
+      <span className={styles.quotaPro}>{value}</span>
     </li>
   );
 }
 
-function WelcomeBody() {
+function WelcomeBody({ plan }: { plan: Extract<Plan, "plus" | "pro"> }) {
   const navigate = useNavigate();
+  const planName = plan === "pro" ? "Pro" : "Plus";
 
   return (
     <div className={styles.view}>
@@ -133,19 +143,23 @@ function WelcomeBody() {
         <span className={styles.heroSparkle} aria-hidden="true">
           <Icon name="sparkles" size={28} />
         </span>
-        <p className={styles.heroEyebrow}>You're on Learnora Pro</p>
-        <h1 className={styles.heroTitle}>Welcome to Pro.</h1>
+        <p className={styles.heroEyebrow}>You're on Learnora {planName}</p>
+        <h1 className={styles.heroTitle}>Welcome to {planName}.</h1>
         <p className={styles.heroSub}>
           Everything you already had still works exactly the same. Here's
           what just got added.
         </p>
       </header>
 
-      <section className={styles.featureGrid} aria-label="Pro features">
-        {PRO_FEATURES.map((f) => (
-          <FeatureCard key={f.id} id={f.id} />
-        ))}
-      </section>
+      {/* Plus buys AI headroom and nothing else — the binary feature grid
+          (Trajectory, calendar import, …) stays Pro-exclusive. */}
+      {plan === "pro" && (
+        <section className={styles.featureGrid} aria-label="Pro features">
+          {PRO_FEATURES.map((f) => (
+            <FeatureCard key={f.id} id={f.id} />
+          ))}
+        </section>
+      )}
 
       <Card
         as="section"
@@ -154,22 +168,24 @@ function WelcomeBody() {
         padding="lg"
         className={styles.quotaCard}
       >
-        <h2 className={styles.quotaTitle}>Your new limits</h2>
+        <h2 className={styles.quotaTitle}>Your new AI limits, per day</h2>
         <ul className={styles.quotaList}>
-          <QuotaRow
-            label="AI generations / day"
-            free={String(QUOTAS.free.aiGenerationsPerDay)}
-            pro={String(QUOTAS.pro.aiGenerationsPerDay)}
-          />
+          {HEADLINE_TOOLS.map((tool) => (
+            <QuotaRow
+              key={tool}
+              label={AI_TOOLS[tool].name}
+              free={String(QUOTAS.free[tool])}
+              value={String(QUOTAS[plan][tool])}
+            />
+          ))}
           <QuotaRow
             label="Notebooks"
             free={String(QUOTAS.free.notebooks)}
-            pro="Unlimited"
-          />
-          <QuotaRow
-            label="Imported calendars"
-            free={String(QUOTAS.free.importedCalendars)}
-            pro={String(QUOTAS.pro.importedCalendars)}
+            value={
+              Number.isFinite(QUOTAS[plan].notebooks)
+                ? String(QUOTAS[plan].notebooks)
+                : "Unlimited"
+            }
           />
         </ul>
       </Card>
@@ -195,7 +211,7 @@ function SettingUpBody() {
       <span className={styles.heroSparkle} aria-hidden="true">
         <Icon name="sparkles" size={28} />
       </span>
-      <h1 className={styles.heroTitle}>Setting up your Pro account…</h1>
+      <h1 className={styles.heroTitle}>Setting up your account…</h1>
       <p className={styles.heroSub}>
         This usually takes a couple of seconds. Hang tight.
       </p>
@@ -206,7 +222,7 @@ function SettingUpBody() {
 }
 
 export function WelcomeToProView() {
-  const { isPro, isPending } = useEntitlements();
+  const { plan, isPending } = useEntitlements();
   const refresh = useRefreshSubscription();
   const [params] = useSearchParams();
   const fromCheckout = params.get("checkout") === "success";
@@ -217,7 +233,7 @@ export function WelcomeToProView() {
      hasn't caught up yet — same race BillingTab already covers, just with
      somewhere to land while it resolves instead of a bare toast. */
   useEffect(() => {
-    if (isPro || isPending || !fromCheckout) return;
+    if (plan !== "free" || isPending || !fromCheckout) return;
     if (attempt >= RETRY_DELAYS_MS.length) {
       setGaveUp(true);
       return;
@@ -227,13 +243,13 @@ export function WelcomeToProView() {
       setAttempt((n) => n + 1);
     }, RETRY_DELAYS_MS[attempt]);
     return () => clearTimeout(t);
-  }, [isPro, isPending, fromCheckout, attempt, refresh]);
+  }, [plan, isPending, fromCheckout, attempt, refresh]);
 
   if (isPending) {
     return <SettingUpBody />;
   }
 
-  if (!isPro) {
+  if (plan === "free") {
     if (fromCheckout && !gaveUp) return <SettingUpBody />;
     // Reached directly by a free account (bookmark, back button, a stale
     // link) — there's nothing to onboard them into, so send them to the
@@ -241,5 +257,5 @@ export function WelcomeToProView() {
     return <Navigate to="/settings" replace />;
   }
 
-  return <WelcomeBody />;
+  return <WelcomeBody plan={plan} />;
 }

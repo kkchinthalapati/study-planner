@@ -378,6 +378,7 @@ Respond ONLY with valid JSON in this exact schema:
 
     const res = await callEdge({
       history: [{ role: "user", content: prompt }],
+      tool: "sparring",
     });
 
     const parsed = JSON.parse(res.text) as {
@@ -529,6 +530,7 @@ Respond ONLY with valid JSON in this exact schema:
 
     const res = await callEdge({
       history: [{ role: "user", content: prompt }],
+      tool: "sparring",
     });
 
     const parsed = JSON.parse(res.text);
@@ -687,6 +689,7 @@ Respond ONLY with JSON:
 
     const res = await callEdge({
       history: [{ role: "user", content: prompt }],
+      tool: "sparring",
     });
     const parsed = JSON.parse(res.text);
 

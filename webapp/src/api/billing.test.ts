@@ -120,10 +120,31 @@ describe("billingApi checkout and portal", () => {
       }),
     );
 
-    await expect(billingApi.createCheckoutSession("annual")).resolves.toBe(
-      "https://checkout.stripe.com/x",
+    await expect(
+      billingApi.createCheckoutSession("pro", "annual"),
+    ).resolves.toBe("https://checkout.stripe.com/x");
+    expect(body).toMatchObject({
+      action: "checkout",
+      plan: "pro",
+      period: "annual",
+    });
+  });
+
+  it("passes the Plus plan through to checkout too", async () => {
+    let body: unknown;
+    server.use(
+      http.post(fn("stripe-billing"), async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ url: "https://checkout.stripe.com/x" });
+      }),
     );
-    expect(body).toMatchObject({ action: "checkout", price: "annual" });
+
+    await billingApi.createCheckoutSession("plus", "monthly");
+    expect(body).toMatchObject({
+      action: "checkout",
+      plan: "plus",
+      period: "monthly",
+    });
   });
 
   it("asks for a portal URL", async () => {
@@ -156,10 +177,10 @@ describe("billingApi checkout and portal", () => {
       ),
     );
 
-    await expect(billingApi.createCheckoutSession("monthly")).rejects.toThrow(
-      /isn't set up/,
-    );
-    await billingApi.createCheckoutSession("monthly").catch((err) => {
+    await expect(
+      billingApi.createCheckoutSession("pro", "monthly"),
+    ).rejects.toThrow(/isn't set up/);
+    await billingApi.createCheckoutSession("pro", "monthly").catch((err) => {
       expect(err).toBeInstanceOf(BillingError);
       expect((err as BillingError).notConfigured).toBe(true);
     });
