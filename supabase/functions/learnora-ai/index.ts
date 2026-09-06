@@ -181,6 +181,14 @@ type OpenAIProvider = {
 
 const OPENAI_PROVIDERS: OpenAIProvider[] = [
   {
+    id: "openai",
+    keyEnv: "OPENAI_API_KEY",
+    modelEnv: "OPENAI_MODEL",
+    defaultModel: "gpt-4o-mini",
+    url: "https://api.openai.com/v1/chat/completions",
+    jsonMode: true,
+  },
+  {
     id: "cerebras",
     keyEnv: "CEREBRAS_API_KEY",
     modelEnv: "CEREBRAS_MODEL",
