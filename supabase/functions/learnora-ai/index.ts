@@ -189,7 +189,16 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.cloudflare.com/client/v4/accounts/me/ai/run/",
     jsonMode: true,
   },
-  // Secondary: Extreme speed for time-sensitive requests
+  // Secondary: Highest capability model (Claude 3.5 Sonnet)
+  {
+    id: "claude",
+    keyEnv: "CLAUDE_API_KEY",
+    modelEnv: "CLAUDE_MODEL",
+    defaultModel: "claude-3-5-sonnet-20241022",
+    url: "https://api.anthropic.com/v1/messages",
+    jsonMode: true,
+  },
+  // Tertiary: Extreme speed for time-sensitive requests
   {
     id: "groq",
     keyEnv: "GROQ_API_KEY",
@@ -198,7 +207,7 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.groq.com/openai/v1/chat/completions",
     jsonMode: true,
   },
-  // Tertiary: Highest reliability + quality for edge cases
+  // Quaternary: Highest reliability + quality for edge cases
   {
     id: "openai",
     keyEnv: "OPENAI_API_KEY",
@@ -207,7 +216,7 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.openai.com/v1/chat/completions",
     jsonMode: true,
   },
-  // Quaternary: Strong model for reasoning-heavy tasks
+  // Quinary: Strong model for reasoning-heavy tasks
   {
     id: "cerebras",
     keyEnv: "CEREBRAS_API_KEY",
@@ -216,7 +225,7 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.cerebras.ai/v1/chat/completions",
     jsonMode: true,
   },
-  // Quinary: Reliable fallback
+  // Senary: Reliable fallback
   {
     id: "mistral",
     keyEnv: "MISTRAL_API_KEY",
@@ -225,7 +234,7 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.mistral.ai/v1/chat/completions",
     jsonMode: true,
   },
-  // Senary: Free tier fallback
+  // Septenary: Free tier fallback
   {
     id: "github-models",
     keyEnv: "GITHUB_MODELS_TOKEN",
