@@ -230,6 +230,7 @@ ${fenceUntrusted(currentHtml)}
       return callEdge({
         history: [{ role: "user", content: prompt }],
         mode: "rewrite",
+        tool: "chat",
         settings,
       });
     },

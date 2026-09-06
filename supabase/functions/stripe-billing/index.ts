@@ -12,13 +12,17 @@
  * Deploy:
  *   supabase functions deploy stripe-billing
  *   supabase secrets set STRIPE_SECRET_KEY=sk_live_...
- *   supabase secrets set STRIPE_PRICE_MONTHLY=price_...
- *   supabase secrets set STRIPE_PRICE_ANNUAL=price_...
+ *   supabase secrets set STRIPE_PRICE_PLUS_MONTHLY=price_...
+ *   supabase secrets set STRIPE_PRICE_PLUS_ANNUAL=price_...
+ *   supabase secrets set STRIPE_PRICE_PRO_MONTHLY=price_...
+ *   supabase secrets set STRIPE_PRICE_PRO_ANNUAL=price_...
  *
  * Until those secrets exist the function answers 503 with
  * `{ notConfigured: true }`, which the client turns into "billing isn't set up
  * yet" rather than a scary error. The whole app runs fine in that state; every
- * account is simply free. */
+ * account is simply free. A deployment can also configure only the Pro pair
+ * and leave Plus unset — checkout for Plus alone falls back to
+ * not-configured while Pro keeps working. */
 
 import Stripe from "npm:stripe@17.5.0";
 
@@ -120,7 +124,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Unauthorized. Please log in." }, 401, cors);
   }
 
-  let payload: { action?: string; price?: string; returnUrl?: string };
+  let payload: {
+    action?: string;
+    plan?: string;
+    period?: string;
+    returnUrl?: string;
+  };
   try {
     payload = await req.json();
   } catch {
@@ -172,10 +181,15 @@ Deno.serve(async (req: Request) => {
     }
 
     if (payload.action === "checkout") {
-      const priceId =
-        payload.price === "annual"
-          ? Deno.env.get("STRIPE_PRICE_ANNUAL")
-          : Deno.env.get("STRIPE_PRICE_MONTHLY");
+      const plan = payload.plan === "plus" ? "plus" : "pro";
+      const period = payload.period === "annual" ? "annual" : "monthly";
+      /* PLUS_MONTHLY / PLUS_ANNUAL / PRO_MONTHLY / PRO_ANNUAL — four distinct
+         Stripe prices, one per plan/period pair. The webhook re-derives which
+         plan a subscription belongs to from this same price id (see
+         PLAN_BY_PRICE_ID there), so the two must be edited together. */
+      const priceId = Deno.env.get(
+        `STRIPE_PRICE_${plan.toUpperCase()}_${period.toUpperCase()}`,
+      );
       if (!priceId) {
         return json(
           {
@@ -197,9 +211,14 @@ Deno.serve(async (req: Request) => {
         /* Repeated on the subscription as well as the session: the events that
            matter most (`customer.subscription.*`) do not carry the checkout
            session, so without this the webhook would have to make an extra
-           API call to work out who the subscription belongs to. */
-        subscription_data: { metadata: { supabase_user_id: user.id } },
-        metadata: { supabase_user_id: user.id },
+           API call to work out who the subscription belongs to. `plan` here
+           is a fallback only — the webhook's primary signal is the price id
+           actually on the subscription, which cannot drift from what Stripe
+           is really charging the way a hand-typed metadata field could. */
+        subscription_data: {
+          metadata: { supabase_user_id: user.id, plan },
+        },
+        metadata: { supabase_user_id: user.id, plan },
       });
       return json({ url: session.url }, 200, cors);
     }

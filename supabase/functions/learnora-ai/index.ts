@@ -473,32 +473,69 @@ function safetyRefusalResponse(mode: string | undefined, headers: Record<string,
    deliberately abusive one) could exhaust that shared quota for every other
    student in minutes, and nothing before this caught it.
 
-   RATE_LIMIT_MAX requests per RATE_LIMIT_WINDOW_MS, per signed-in user.
-   Deliberately generous for a human: one request every 20s sustained is
-   plenty for chat plus the occasional quiz/notes generation, but a scripted
-   loop hits it in seconds. Both are overridable via secrets without a
-   redeploy, same pattern as the provider model overrides above.
+   Two checks, on two different axes:
+
+   1. **Burst**, per user across every tool — protects Learnora's shared
+      provider keys from a runaway client. One request every 20s sustained is
+      plenty for a human; a scripted retry loop hits the ceiling in seconds.
+   2. **Daily, per tool** — the actual product boundary. Each tool (chat,
+      notes, flashcards, quiz, plan, and the five differentiator tools) has
+      its own allowance per plan, so a flashcard-heavy afternoon cannot
+      silently spend the day's chat budget or vice versa. Kept in step with
+      QUOTAS in webapp/src/lib/entitlements.ts — the client shows the
+      numbers, this enforces them; a value in the browser is not a payment.
+
+   Both are overridable via secrets without a redeploy, same pattern as the
+   provider model overrides above (burst only — the per-tool table below has
+   too many cells to sanely expose as forty separate env vars; edit
+   AI_TOOL_QUOTAS directly and redeploy if it ever needs to change without a
+   client release).
    ========================================================================= */
 
 const RATE_LIMIT_MAX = Number(Deno.env.get("AI_RATE_LIMIT_MAX")) || 30;
-/* Pro accounts get a higher burst ceiling *and* a daily allowance the free
-   tier does not have. The burst limit above exists to protect Learnora's
-   shared provider quota from a runaway client; the daily allowance below is
-   the actual product boundary, and the two are separate on purpose — raising
-   one to sell a plan should never quietly weaken the other.
-
-   Kept in step with QUOTAS in webapp/src/lib/entitlements.ts. The client shows
-   the numbers, this enforces them; a value in the browser is not a payment. */
+/* Paid accounts get a higher burst ceiling than free — this exists only to
+   protect Learnora's shared provider quota from a runaway client, and is
+   separate from the per-tool daily allowance below on purpose: raising one to
+   sell a plan should never quietly weaken the other. */
+const RATE_LIMIT_MAX_PLUS = Number(Deno.env.get("AI_RATE_LIMIT_MAX_PLUS")) || 60;
 const RATE_LIMIT_MAX_PRO = Number(Deno.env.get("AI_RATE_LIMIT_MAX_PRO")) || 90;
-const DAILY_LIMIT_FREE = Number(Deno.env.get("AI_DAILY_LIMIT_FREE")) || 25;
-const DAILY_LIMIT_PRO = Number(Deno.env.get("AI_DAILY_LIMIT_PRO")) || 400;
-
-const DAILY_LIMIT_MESSAGE_FREE =
-  "You've used today's AI generations on the free plan. They reset at midnight — or Learnora Pro raises the limit.";
-const DAILY_LIMIT_MESSAGE_PRO =
-  "You've hit today's generation limit. It resets at midnight.";
 const RATE_LIMIT_WINDOW_MS = (Number(Deno.env.get("AI_RATE_LIMIT_WINDOW_MINUTES")) || 10) * 60_000;
 
+type Plan = "free" | "plus" | "pro";
+
+/** The tool identifier the client sends (see `AiToolId` in
+ *  webapp/src/lib/entitlements.ts). A call with no `tool` — an older client
+ *  build, or a caller not yet migrated — is billed to "chat", the general
+ *  utility bucket, rather than rejected outright. */
+const DEFAULT_TOOL = "chat";
+
+/* One row per plan, one column per tool. Kept in step with QUOTAS in
+   webapp/src/lib/entitlements.ts by hand — there is no shared import between
+   a Deno edge function and the Vite webapp, so a change to one that is not
+   mirrored in the other silently drifts. Both sides describe the same rule:
+   only the number here is what actually stops a request. */
+const AI_TOOL_QUOTAS: Record<Plan, Record<string, number>> = {
+  free: {
+    chat: 15, notes: 3, flashcards: 3, quiz: 3, plan: 1,
+    debugger: 2, preMortem: 2, feynman: 2, examDeconstructor: 2,
+    sparring: 2, notebookStudio: 5,
+  },
+  plus: {
+    chat: 60, notes: 10, flashcards: 10, quiz: 10, plan: 3,
+    debugger: 8, preMortem: 6, feynman: 8, examDeconstructor: 6,
+    sparring: 8, notebookStudio: 20,
+  },
+  pro: {
+    chat: 200, notes: 30, flashcards: 30, quiz: 30, plan: 7,
+    debugger: 25, preMortem: 20, feynman: 25, examDeconstructor: 20,
+    sparring: 25, notebookStudio: 60,
+  },
+};
+
+const DAILY_LIMIT_MESSAGE_FREE =
+  "You've used today's allowance for this tool on the free plan. It resets at midnight — or Learnora Plus/Pro raises the limit.";
+const DAILY_LIMIT_MESSAGE_PAID =
+  "You've hit today's allowance for this tool. It resets at midnight.";
 const RATE_LIMIT_MESSAGE =
   "You're sending requests faster than I can keep up with. Wait a few minutes and try again.";
 
@@ -519,36 +556,35 @@ function rateLimitResponse(
   );
 }
 
-/* Counts this user's own accepted requests in the trailing window and logs
- * the current one — via the same client the auth gate already built with
- * the caller's JWT, so RLS (owner-only select/insert on ai_request_log)
- * does the actual enforcement; this is just the query shape around it.
- * Fails open on a database error: a rate limiter that takes AI outages down
- * with it trades one small risk (a burst slips through while the table is
- * unreachable) for a much worse one (AI goes fully offline because a
- * side-table had a bad moment). */
+/* Counts this user's own accepted requests and logs the current one — via
+ * the same client the auth gate already built with the caller's JWT, so RLS
+ * (owner-only select/insert on ai_request_log) does the actual enforcement;
+ * this is just the query shape around it. Fails open on a database error: a
+ * rate limiter that takes AI outages down with it trades one small risk (a
+ * burst slips through while the table is unreachable) for a much worse one
+ * (AI goes fully offline because a side-table had a bad moment). */
 type RateLimitVerdict = { allowed: true } | { allowed: false; message: string };
 
-/** Is this caller on Pro right now?
+/** This caller's plan right now.
  *
  * Read through the caller's own JWT'd client, so RLS guarantees they can only
  * see their own row and there is no user id to get wrong. Fails to "free" on
- * any error, which is the safe direction: the worst case is a paying user
- * briefly held to the free ceiling, rather than the ceiling not existing. */
-async function isProUser(supabase: any, userId: string): Promise<boolean> {
+ * any error or an unrecognised plan string, which is the safe direction: the
+ * worst case is a paying user briefly held to the free ceiling, rather than
+ * the ceiling not existing. */
+async function getUserPlan(supabase: any, userId: string): Promise<Plan> {
   try {
     const { data, error } = await supabase
       .from("profiles")
       .select("plan, plan_status")
       .eq("id", userId)
       .maybeSingle();
-    if (error || !data) return false;
-    return (
-      data.plan === "pro" &&
-      ["active", "trialing", "past_due"].includes(data.plan_status)
-    );
+    if (error || !data) return "free";
+    const entitled = ["active", "trialing", "past_due"].includes(data.plan_status);
+    if (!entitled) return "free";
+    return data.plan === "plus" || data.plan === "pro" ? data.plan : "free";
   } catch {
-    return false;
+    return "free";
   }
 }
 
@@ -556,11 +592,17 @@ async function checkAndLogRateLimit(
   supabase: any,
   userId: string,
   mode: string | undefined,
+  tool: string | undefined,
 ): Promise<RateLimitVerdict> {
+  const billedTool = tool || DEFAULT_TOOL;
   try {
-    const pro = await isProUser(supabase, userId);
-    const burstMax = pro ? RATE_LIMIT_MAX_PRO : RATE_LIMIT_MAX;
-    const dailyMax = pro ? DAILY_LIMIT_PRO : DAILY_LIMIT_FREE;
+    const plan = await getUserPlan(supabase, userId);
+    const burstMax = plan === "pro"
+      ? RATE_LIMIT_MAX_PRO
+      : plan === "plus"
+      ? RATE_LIMIT_MAX_PLUS
+      : RATE_LIMIT_MAX;
+    const dailyMax = AI_TOOL_QUOTAS[plan][billedTool] ?? AI_TOOL_QUOTAS[plan][DEFAULT_TOOL];
 
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
     const { count, error: countError } = await supabase
@@ -575,33 +617,34 @@ async function checkAndLogRateLimit(
     }
 
     if ((count ?? 0) >= burstMax) {
-      console.warn("[rate-limit] burst blocked", { userId, mode, count, pro });
+      console.warn("[rate-limit] burst blocked", { userId, mode, tool: billedTool, count, plan });
       return { allowed: false, message: RATE_LIMIT_MESSAGE };
     }
 
-    /* The daily allowance, counted from midnight UTC. UTC rather than the
-       student's own timezone because this is a machine boundary, not a
-       calendar promise — the alternative is reading profiles.timezone and
-       explaining to a traveller why their allowance reset twice. */
+    /* The daily allowance, counted from midnight UTC, per tool. UTC rather
+       than the student's own timezone because this is a machine boundary,
+       not a calendar promise — the alternative is reading profiles.timezone
+       and explaining to a traveller why their allowance reset twice. */
     const midnight = new Date();
     midnight.setUTCHours(0, 0, 0, 0);
     const { count: today, error: dailyError } = await supabase
       .from("ai_request_log")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
+      .eq("tool", billedTool)
       .gte("created_at", midnight.toISOString());
 
     if (!dailyError && (today ?? 0) >= dailyMax) {
-      console.warn("[rate-limit] daily blocked", { userId, mode, today, pro });
+      console.warn("[rate-limit] daily blocked", { userId, mode, tool: billedTool, today, plan });
       return {
         allowed: false,
-        message: pro ? DAILY_LIMIT_MESSAGE_PRO : DAILY_LIMIT_MESSAGE_FREE,
+        message: plan === "free" ? DAILY_LIMIT_MESSAGE_FREE : DAILY_LIMIT_MESSAGE_PAID,
       };
     }
 
     const { error: insertError } = await supabase
       .from("ai_request_log")
-      .insert({ user_id: userId, mode: mode ?? null });
+      .insert({ user_id: userId, mode: mode ?? null, tool: billedTool });
     if (insertError) {
       console.error("[rate-limit] log insert failed (request still allowed)", insertError);
     }
@@ -648,7 +691,7 @@ Deno.serve(async (req) => {
     const debugErrors: Record<string, string> = {};
 
     try {
-        const { history, file, settings, mode } = await req.json();
+        const { history, file, settings, mode, tool } = await req.json();
         const s = settings || {};
 
         const personaMap = {
@@ -717,7 +760,7 @@ Deno.serve(async (req) => {
         // resource. Checked (and logged) ahead of the safety screen so a
         // flood of unsafe-topic probes counts against the sender's budget
         // too, rather than getting a free pass because they were refused.
-        const rateLimit = await checkAndLogRateLimit(supabase, user.id, mode);
+        const rateLimit = await checkAndLogRateLimit(supabase, user.id, mode, tool);
         if (!rateLimit.allowed) {
             return rateLimitResponse(mode, jsonHeaders, rateLimit.message);
         }

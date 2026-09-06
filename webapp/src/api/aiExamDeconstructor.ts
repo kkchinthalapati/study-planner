@@ -561,6 +561,7 @@ Return a valid JSON array of objects with:
       const response = await callEdge({
         history: [{ role: "user", content: prompt }],
         mode: "quiz",
+        tool: "examDeconstructor",
         settings,
       });
 
@@ -647,6 +648,7 @@ Return JSON array only.`;
       const response = await callEdge({
         history: [{ role: "user", content: prompt }],
         mode: "quiz",
+        tool: "examDeconstructor",
         settings,
       });
 

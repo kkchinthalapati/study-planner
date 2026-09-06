@@ -1,8 +1,9 @@
 import { Skeleton } from "../../components/Skeleton";
 import { useAiUsage } from "../../hooks/useAiUsage";
+import { AI_TOOL_IDS, AI_TOOLS, type QuotaUsage } from "../../lib/entitlements";
 import styles from "./settings.module.css";
 
-/* Today's AI allowance, on screen before it runs out.
+/* Today's AI allowance, on screen before it runs out — one meter per tool.
  *
  * The limit itself is enforced in the edge function and always has been. What
  * a student never had was any way to see it coming: the first mention of a
@@ -10,18 +11,55 @@ import styles from "./settings.module.css";
  * is that missing warning, and nothing more — it enforces nothing, and a
  * number here being wrong can only ever mislead, never permit.
  *
- * Which is why it renders a skeleton rather than a number while loading. "0
- * used" and "not known yet" look identical on screen and only one of them is
- * true; showing the wrong one tells a student who is nearly out that they have
- * a full day's budget. */
+ * One row per tool rather than one shared number: quotas moved from a single
+ * pool to a cap per tool (chat, notes, flashcards, quiz, plan, and the five
+ * differentiator tools), specifically so a flashcard-heavy afternoon cannot
+ * silently spend the day's chat budget. A single aggregate meter would hide
+ * that and mislead in exactly the direction the old pool did.
+ *
+ * Renders a skeleton rather than a number while loading. "0 used" and "not
+ * known yet" look identical on screen and only one of them is true; showing
+ * the wrong one tells a student who is nearly out that they have a full day's
+ * budget. */
 
-/** Below this fraction remaining, the meter starts warning. Roughly "one
- *  session's worth left" on the free tier — early enough to be a heads-up
- *  rather than an obituary. */
+/** Below this fraction remaining, a tool's meter starts warning. */
 const WARN_AT_FRACTION = 0.8;
 
+function ToolMeter({ usage, name }: { usage: QuotaUsage; name: string }) {
+  const tone = usage.exceeded
+    ? styles.meterFillBad
+    : usage.fraction >= WARN_AT_FRACTION
+      ? styles.meterFillWarn
+      : "";
+
+  return (
+    <div className={styles.toolMeterRow}>
+      <div className={styles.toolMeterHead}>
+        <span className={styles.toolMeterName}>{name}</span>
+        <span className={styles.toolMeterCount}>
+          {usage.exceeded ? "Used up" : `${usage.remaining} of ${usage.limit} left`}
+        </span>
+      </div>
+      <div
+        className={styles.meterTrack}
+        role="progressbar"
+        aria-label={name}
+        aria-valuemin={0}
+        aria-valuemax={usage.limit}
+        aria-valuenow={usage.used}
+        aria-valuetext={`${usage.used} of ${usage.limit} ${name} generations used today`}
+      >
+        <div
+          className={`${styles.meterFill} ${tone}`}
+          style={{ width: `${Math.round(usage.fraction * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function AiUsageMeter({ isPro }: { isPro: boolean }) {
-  const { usage, resetsAt, isPending, isError } = useAiUsage();
+  const { usageFor, resetsAt, isPending, isError } = useAiUsage();
 
   if (isPending) {
     return (
@@ -54,38 +92,22 @@ export function AiUsageMeter({ isPro }: { isPro: boolean }) {
       })
     : null;
 
-  const tone = usage.exceeded
-    ? styles.meterFillBad
-    : usage.fraction >= WARN_AT_FRACTION
-      ? styles.meterFillWarn
-      : "";
-
   return (
     <div className={`${styles.field} ${styles.fieldStack}`}>
       <div className={styles.fieldLabel}>
-        <span className={styles.labelText}>AI generations today</span>
+        <span className={styles.labelText}>AI generations today, by tool</span>
         <span className={styles.fieldDesc}>
-          {usage.exceeded
-            ? isPro
-              ? "You have used today's generations. They reset at midnight."
-              : "You have used today's generations. They reset at midnight — or Pro raises the limit."
-            : `${usage.remaining} of ${usage.limit} left.`}
+          {isPro
+            ? "Each tool has its own daily allowance."
+            : "Each tool has its own daily allowance — Plus and Pro raise every one of them."}
           {resetTime ? ` Resets at ${resetTime} your time.` : ""}
         </span>
       </div>
 
-      <div
-        className={styles.meterTrack}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={usage.limit}
-        aria-valuenow={usage.used}
-        aria-valuetext={`${usage.used} of ${usage.limit} generations used today`}
-      >
-        <div
-          className={`${styles.meterFill} ${tone}`}
-          style={{ width: `${Math.round(usage.fraction * 100)}%` }}
-        />
+      <div className={styles.toolMeterList}>
+        {AI_TOOL_IDS.map((tool) => (
+          <ToolMeter key={tool} usage={usageFor(tool)} name={AI_TOOLS[tool].name} />
+        ))}
       </div>
     </div>
   );

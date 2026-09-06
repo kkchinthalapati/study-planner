@@ -590,6 +590,7 @@ export function SocraticCoachDrawer({
         const prompt = buildSocraticPrompt(selectedMode, card, noteText);
         const { text } = await callEdge({
           history: [{ role: "user", content: prompt }],
+          tool: "chat",
           settings,
         });
         setResponse(text.trim());
@@ -1051,6 +1052,7 @@ function ReviewSession({
          sends as history. */
       const { text } = await callEdge({
         history: [{ role: "user", content: AI_GRADE_PROMPT(card, trimmed) }],
+        tool: "chat",
         settings,
       });
       /* Leaving the route does not cancel fetch, so a late reply must not

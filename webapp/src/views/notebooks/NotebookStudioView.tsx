@@ -245,6 +245,7 @@ Keep explanations friendly, encouraging, and structured for student success.`;
             content: `${systemPrompt}\n\n${evidenceBlock}\n\nSTUDY SOURCES:\n${sourcesContext}\n\nSTUDENT QUESTION:\n${promptToSend}`,
           },
         ],
+        tool: "notebookStudio",
       });
 
       const citations = selectedSources.map((s) => ({
@@ -291,6 +292,7 @@ Use British English throughout.`;
             content: `You are an expert British exam revision coach. Generate concise, high-yield cheat sheets.\n\nSOURCES:\n${sourcesText}\n\nTASK:\n${prompt}`,
           },
         ],
+        tool: "notebookStudio",
       });
 
       addArtifact({
@@ -335,6 +337,7 @@ Use British English throughout.`;
             content: `You are a Feynman Technique specialist helping students master deep intuition.\n\nSOURCES:\n${sourcesText}\n\nTASK:\n${prompt}`,
           },
         ],
+        tool: "notebookStudio",
       });
 
       addArtifact({

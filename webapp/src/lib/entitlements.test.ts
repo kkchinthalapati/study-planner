@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  AI_TOOL_IDS,
   FEATURES,
   FREE_SUBSCRIPTION,
-  PRICES,
+  PLAN_PRICING,
   PRO_FEATURES,
   QUOTAS,
   canUse,
@@ -20,9 +21,10 @@ function sub(patch: Partial<Subscription> = {}): Subscription {
 }
 
 describe("isEntitled", () => {
-  it("entitles an active or trialing Pro subscription", () => {
+  it("entitles an active or trialing paid subscription", () => {
     expect(isEntitled(sub({ status: "active" }))).toBe(true);
     expect(isEntitled(sub({ status: "trialing" }))).toBe(true);
+    expect(isEntitled(sub({ plan: "plus", status: "active" }))).toBe(true);
   });
 
   it("keeps a past-due subscription working", () => {
@@ -51,14 +53,18 @@ describe("isEntitled", () => {
 describe("effectivePlan", () => {
   it("collapses plan and status into the single answer gates should ask", () => {
     expect(effectivePlan(sub({ status: "active" }))).toBe("pro");
+    expect(effectivePlan(sub({ plan: "plus", status: "active" }))).toBe(
+      "plus",
+    );
     expect(effectivePlan(sub({ status: "canceled" }))).toBe("free");
   });
 });
 
 describe("canUse", () => {
-  it("keeps every Pro feature away from free", () => {
+  it("keeps every Pro feature away from free and Plus", () => {
     for (const feature of PRO_FEATURES) {
       expect(canUse("free", feature.id)).toBe(false);
+      expect(canUse("plus", feature.id)).toBe(false);
       expect(canUse("pro", feature.id)).toBe(true);
     }
   });
@@ -79,30 +85,35 @@ describe("canUse", () => {
 });
 
 describe("quotas", () => {
-  it("gives Pro at least as much as free on every quota", () => {
+  it("gives Plus at least as much as free, and Pro at least as much as Plus, on every quota", () => {
     for (const key of Object.keys(
       QUOTAS.free,
     ) as (keyof typeof QUOTAS.free)[]) {
-      expect(QUOTAS.pro[key]).toBeGreaterThanOrEqual(QUOTAS.free[key]);
+      expect(QUOTAS.plus[key]).toBeGreaterThanOrEqual(QUOTAS.free[key]);
+      expect(QUOTAS.pro[key]).toBeGreaterThanOrEqual(QUOTAS.plus[key]);
+    }
+  });
+
+  it("gives every plan, including free, a real allowance on every AI tool", () => {
+    /* Nothing that shipped free becomes paid — each tool keeps a non-zero
+       free allowance rather than being gated to Plus/Pro entirely. */
+    for (const tool of AI_TOOL_IDS) {
+      expect(QUOTAS.free[tool]).toBeGreaterThan(0);
     }
   });
 
   it("reports remaining and exceeded against the plan's limit", () => {
-    const usage = quotaUsage("free", "aiGenerationsPerDay", 20);
-    expect(usage.limit).toBe(quotaFor("free", "aiGenerationsPerDay"));
-    expect(usage.remaining).toBe(usage.limit - 20);
+    const usage = quotaUsage("free", "chat", 10);
+    expect(usage.limit).toBe(quotaFor("free", "chat"));
+    expect(usage.remaining).toBe(usage.limit - 10);
     expect(usage.exceeded).toBe(false);
-    expect(usage.fraction).toBeCloseTo(20 / usage.limit, 6);
+    expect(usage.fraction).toBeCloseTo(10 / usage.limit, 6);
   });
 
   it("marks a quota exceeded at the limit, not past it", () => {
-    const limit = quotaFor("free", "aiGenerationsPerDay");
-    expect(quotaUsage("free", "aiGenerationsPerDay", limit).exceeded).toBe(
-      true,
-    );
-    expect(quotaUsage("free", "aiGenerationsPerDay", limit - 1).exceeded).toBe(
-      false,
-    );
+    const limit = quotaFor("free", "quiz");
+    expect(quotaUsage("free", "quiz", limit).exceeded).toBe(true);
+    expect(quotaUsage("free", "quiz", limit - 1).exceeded).toBe(false);
   });
 
   it("never exceeds or fills the meter for an unlimited quota", () => {
@@ -119,30 +130,53 @@ describe("quotas", () => {
 });
 
 describe("pricing", () => {
-  it("offers a monthly and an annual price", () => {
-    expect(PRICES.map((p) => p.id).sort()).toEqual(["annual", "monthly"]);
+  const plans = ["plus", "pro"] as const;
+
+  it("offers a monthly and an annual price for both paid plans", () => {
+    for (const plan of plans) {
+      expect(PLAN_PRICING[plan].prices.map((p) => p.id).sort()).toEqual([
+        "annual",
+        "monthly",
+      ]);
+    }
   });
 
-  it("makes the annual plan actually cheaper per month", () => {
-    const monthly = PRICES.find((p) => p.id === "monthly")!;
-    const annual = PRICES.find((p) => p.id === "annual")!;
-    expect(annual.amountPence / 12).toBeLessThan(monthly.amountPence);
+  it("makes the annual plan actually cheaper per month, for both paid plans", () => {
+    for (const plan of plans) {
+      const { prices } = PLAN_PRICING[plan];
+      const monthly = prices.find((p) => p.id === "monthly")!;
+      const annual = prices.find((p) => p.id === "annual")!;
+      expect(annual.amountPence / 12).toBeLessThan(monthly.amountPence);
+    }
   });
 
-  it("states a saving that matches the prices", () => {
-    const monthly = PRICES.find((p) => p.id === "monthly")!;
-    const annual = PRICES.find((p) => p.id === "annual")!;
-    const real = Math.round(
-      (1 - annual.amountPence / (monthly.amountPence * 12)) * 100,
-    );
-    /* Advertising a saving the arithmetic does not support is the kind of
-       thing that is legally interesting as well as dishonest. */
-    expect(annual.savingPercent).toBe(real);
+  it("states a saving that matches the prices, for both paid plans", () => {
+    for (const plan of plans) {
+      const { prices } = PLAN_PRICING[plan];
+      const monthly = prices.find((p) => p.id === "monthly")!;
+      const annual = prices.find((p) => p.id === "annual")!;
+      const real = Math.round(
+        (1 - annual.amountPence / (monthly.amountPence * 12)) * 100,
+      );
+      /* Advertising a saving the arithmetic does not support is the kind of
+         thing that is legally interesting as well as dishonest. */
+      expect(annual.savingPercent).toBe(real);
+    }
+  });
+
+  it("prices Plus below Pro on every billing period", () => {
+    for (const period of ["monthly", "annual"] as const) {
+      const plus = PLAN_PRICING.plus.prices.find((p) => p.id === period)!;
+      const pro = PLAN_PRICING.pro.prices.find((p) => p.id === period)!;
+      expect(plus.amountPence).toBeLessThan(pro.amountPence);
+    }
   });
 
   it("holds money in minor units so no float ever touches a price", () => {
-    for (const price of PRICES) {
-      expect(Number.isInteger(price.amountPence)).toBe(true);
+    for (const plan of plans) {
+      for (const price of PLAN_PRICING[plan].prices) {
+        expect(Number.isInteger(price.amountPence)).toBe(true);
+      }
     }
   });
 

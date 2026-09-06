@@ -1,10 +1,11 @@
-/* How much of today's AI allowance the student has actually spent.
+/* How much of today's AI allowance the student has actually spent, per tool.
  *
  * The allowance itself is enforced server-side, in the edge function
  * (supabase/functions/learnora-ai/index.ts) — it counts this user's rows in
- * `ai_request_log` since midnight UTC and answers 429 past the limit. That is
- * the boundary, and nothing here is part of it: a number in the browser is not
- * a limit, and this module must never be mistaken for one.
+ * `ai_request_log`, filtered to the tool being called, since midnight UTC, and
+ * answers 429 past that tool's limit. That is the boundary, and nothing here
+ * is part of it: a number in the browser is not a limit, and this module must
+ * never be mistaken for one.
  *
  * What was missing is the other half. The edge function computes the count,
  * uses it, and throws it away, so the first a student ever heard about the
@@ -17,18 +18,23 @@
  * and the meter is a view of it. A locally-incremented counter would drift the
  * moment a request failed, a second tab was open, or the student came back on
  * their phone.
- */
+ *
+ * One query, not ten: this fetches every row from today (a handful even for a
+ * Pro account hammering every tool) and buckets them client-side, rather than
+ * issuing a separate `count` request per tool. */
 
 import { supabase } from "../lib/supabase";
 import { requireUserId } from "./session";
+import type { AiToolId } from "../lib/entitlements";
 
 export const aiUsageKeys = {
   today: ["ai-usage", "today"] as const,
 };
 
 export interface DailyAiUsage {
-  /** Accepted AI requests since midnight UTC. */
-  used: number;
+  /** Accepted AI requests since midnight UTC, keyed by tool. A tool with no
+   *  rows today is simply absent — callers read this with `?? 0`. */
+  usedByTool: Partial<Record<AiToolId, number>>;
   /** When the allowance resets, as an ISO timestamp. */
   resetsAt: string;
 }
@@ -54,18 +60,26 @@ export async function fetchDailyAiUsage(): Promise<DailyAiUsage> {
   const userId = await requireUserId();
   const now = new Date();
 
-  /* `head: true` — the rows themselves are never wanted, only how many there
-     are, and the log grows by one row per accepted request all day. */
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from("ai_request_log")
-    .select("id", { count: "exact", head: true })
+    .select("tool")
     .eq("user_id", userId)
     .gte("created_at", utcDayStart(now).toISOString());
 
   if (error) throw new Error(error.message);
 
+  /* A row logged before the `tool` column existed, or by a caller not yet
+     migrated to send one, has `tool: null` — billed to "chat" server-side
+     (see DEFAULT_TOOL in the edge function), so it is counted the same way
+     here rather than silently dropped from every meter. */
+  const usedByTool: Partial<Record<AiToolId, number>> = {};
+  for (const row of data ?? []) {
+    const tool = (row.tool as AiToolId | null) ?? "chat";
+    usedByTool[tool] = (usedByTool[tool] ?? 0) + 1;
+  }
+
   return {
-    used: count ?? 0,
+    usedByTool,
     resetsAt: nextUtcDayStart(now).toISOString(),
   };
 }

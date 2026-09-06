@@ -206,6 +206,7 @@ Return a JSON array where each object has:
           const response = await callEdge({
             history: [{ role: "user", content: prompt }],
             mode: "quiz",
+            tool: "chat",
             settings,
           });
 

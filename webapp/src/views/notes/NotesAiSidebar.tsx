@@ -228,6 +228,7 @@ export function NotesAiSidebar({
             { role: "user", content: systemContext },
           ],
           file: filePayload,
+          tool: "chat",
           settings,
         });
 

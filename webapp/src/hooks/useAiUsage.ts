@@ -1,14 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { aiUsageKeys, fetchDailyAiUsage } from "../api/aiUsage";
 import { useEntitlements } from "./useSubscription";
-import type { QuotaUsage } from "../lib/entitlements";
+import type { AiToolId, QuotaUsage } from "../lib/entitlements";
 
-/* Today's AI allowance, joined to the plan that sets it.
+/* Today's AI allowance, joined to the plan that sets it — per tool.
  *
- * Two halves that live apart: how many generations have been spent (a count in
- * `ai_request_log`) and how many are allowed (a number that depends on the
- * plan). `useEntitlements().usage` already knows how to combine them, so this
- * hook is the fetch plus that call.
+ * Two halves that live apart: how many generations have been spent, per tool
+ * (rows in `ai_request_log`, bucketed client-side by `fetchDailyAiUsage`) and
+ * how many are allowed per tool (a number that depends on the plan).
+ * `useEntitlements().usage` already knows how to combine a used-count and a
+ * plan into a `QuotaUsage`; `usageFor` is that call, closed over today's fetch,
+ * for whichever tool a meter wants to show.
  *
  * `staleTime: 0` is deliberate against the app's 60s default. Everything else
  * cached here describes the student's own library, which only they change from
@@ -16,10 +18,13 @@ import type { QuotaUsage } from "../lib/entitlements";
  * including calls made from another tab or another device. A meter that is a
  * minute stale is a meter that says "8 left" to someone who has none, which is
  * worse than no meter. `api/ai.ts` invalidates the key on every answered
- * request, so in practice this refetches when the number has actually moved.
+ * request, so in practice this refetches when a number has actually moved.
  */
 export interface AiUsageResult {
-  usage: QuotaUsage;
+  /** `QuotaUsage` for one tool, combining today's count with the plan's
+   *  limit for it. Safe to call before loading finishes — it reads 0 used
+   *  until the fetch resolves — but see `isPending` before rendering it. */
+  usageFor: (tool: AiToolId) => QuotaUsage;
   /** ISO timestamp of the next reset (midnight UTC), null until loaded. */
   resetsAt: string | null;
   /** True while either half is still loading. Callers must not render a
@@ -38,7 +43,7 @@ export function useAiUsage(): AiUsageResult {
   });
 
   return {
-    usage: usage("aiGenerationsPerDay", query.data?.used ?? 0),
+    usageFor: (tool) => usage(tool, query.data?.usedByTool[tool] ?? 0),
     resetsAt: query.data?.resetsAt ?? null,
     isPending: planPending || query.isPending,
     isError: query.isError,

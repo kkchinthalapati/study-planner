@@ -6,7 +6,7 @@ import { useToast } from "../context/toast";
 import { useStartCheckout } from "../hooks/useSubscription";
 import {
   FEATURES,
-  PRICES,
+  PLAN_PRICING,
   PRO_FEATURES,
   formatPrice,
   type FeatureId,
@@ -23,47 +23,76 @@ import styles from "./PaywallModal.module.css";
  * fake scarcity or a pre-ticked annual plan.
  *
  * It also never pretends the purchase has happened. The plan changes when
- * Stripe's webhook says so and not a moment earlier — see `stripe-webhook`. */
+ * Stripe's webhook says so and not a moment earlier — see `stripe-webhook`.
+ *
+ * Two paid plans, not one: Plus is more AI headroom on every tool, at a lower
+ * price; Pro is that same headroom at its highest ceiling, plus the handful
+ * of binary features (Trajectory, calendar sync, …) that stay Pro-exclusive.
+ * A feature-triggered paywall (opened from a `ProGate`) always defaults to
+ * Pro and hides the plan tabs — Plus never unlocks a binary feature, so
+ * showing it as a choice there would be a dead end dressed up as an option. */
 
 interface PaywallModalProps {
   open: boolean;
   onClose: () => void;
   /** The gate that brought them here, so the modal can lead with it. */
   feature?: FeatureId;
+  /** Which plan tab is selected first, for a caller that knows which one the
+   *  student was already looking at (a Plus account clicking "See what Pro
+   *  adds"). Ignored when `feature` is set — a feature gate always means
+   *  Pro. Defaults to Plus, the cheaper first rung. */
+  initialPlan?: "plus" | "pro";
 }
 
-export function PaywallModal({ open, onClose, feature }: PaywallModalProps) {
-  const [selected, setSelected] = useState<"monthly" | "annual">("annual");
+export function PaywallModal({
+  open,
+  onClose,
+  feature,
+  initialPlan = "plus",
+}: PaywallModalProps) {
+  const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro">(
+    feature ? "pro" : initialPlan,
+  );
+  const [selectedPeriod, setSelectedPeriod] = useState<"monthly" | "annual">(
+    "annual",
+  );
   const startCheckout = useStartCheckout();
   const { showToast } = useToast();
 
   const lead = feature ? FEATURES[feature] : null;
   const rest = PRO_FEATURES.filter((f) => f.id !== feature);
+  const pricing = PLAN_PRICING[selectedPlan];
+  const planLabel = pricing.name.replace("Learnora ", "");
 
   const upgrade = () => {
-    startCheckout.mutate(selected, {
-      onSuccess: (url) => {
-        window.location.assign(url);
+    startCheckout.mutate(
+      { plan: selectedPlan, period: selectedPeriod },
+      {
+        onSuccess: (url) => {
+          window.location.assign(url);
+        },
+        onError: (error) => {
+          showToast(
+            error instanceof Error
+              ? error.message
+              : "Could not start checkout. Please try again.",
+          );
+        },
       },
-      onError: (error) => {
-        showToast(
-          error instanceof Error
-            ? error.message
-            : "Could not start checkout. Please try again.",
-        );
-      },
-    });
+    );
   };
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={lead ? `${lead.name} is part of Pro` : "Learnora Pro"}
+      title={lead ? `${lead.name} is part of Pro` : pricing.name}
       subtitle={
         lead
           ? lead.pitch
-          : "Everything you use now stays free. Pro adds the two things nothing else does."
+          : selectedPlan === "pro"
+            ? "Everything you use now stays free. Pro adds the two things nothing else does, plus the highest AI ceiling."
+            : pricing.tagline
       }
       contentClassName={styles.dialog}
       footer={
@@ -76,19 +105,47 @@ export function PaywallModal({ open, onClose, feature }: PaywallModalProps) {
             onClick={upgrade}
             disabled={startCheckout.isPending}
           >
-            {startCheckout.isPending ? "Opening checkout…" : "Upgrade to Pro"}
+            {startCheckout.isPending
+              ? "Opening checkout…"
+              : `Upgrade to ${planLabel}`}
           </Button>
         </>
       }
     >
       <div className={styles.body}>
+        {/* A feature gate only ever means Pro, so the choice is hidden rather
+            than shown and then overridden — an already-decided question isn't
+            a question. */}
+        {!lead && (
+          <div
+            className={styles.planTabs}
+            role="radiogroup"
+            aria-label="Plan"
+          >
+            {(["plus", "pro"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={selectedPlan === p}
+                className={`${styles.planTab} ${
+                  selectedPlan === p ? styles.planTabOn : ""
+                }`}
+                onClick={() => setSelectedPlan(p)}
+              >
+                {PLAN_PRICING[p].name.replace("Learnora ", "")}
+              </button>
+            ))}
+          </div>
+        )}
+
         <ul
           className={styles.priceList}
           role="radiogroup"
           aria-label="Billing period"
         >
-          {PRICES.map((price) => {
-            const on = selected === price.id;
+          {pricing.prices.map((price) => {
+            const on = selectedPeriod === price.id;
             return (
               <li key={price.id}>
                 <button
@@ -96,7 +153,7 @@ export function PaywallModal({ open, onClose, feature }: PaywallModalProps) {
                   role="radio"
                   aria-checked={on}
                   className={`${styles.price} ${on ? styles.priceOn : ""}`}
-                  onClick={() => setSelected(price.id)}
+                  onClick={() => setSelectedPeriod(price.id)}
                 >
                   <span className={styles.priceHead}>
                     <span className={styles.priceLabel}>{price.label}</span>
@@ -122,19 +179,28 @@ export function PaywallModal({ open, onClose, feature }: PaywallModalProps) {
           })}
         </ul>
 
-        <ul className={styles.features}>
-          {(lead ? [lead, ...rest] : rest).map((f) => (
-            <li key={f.id} className={styles.feature}>
-              <span className={styles.tick} aria-hidden="true">
-                <Icon name="check-square" size={14} />
-              </span>
-              <span>
-                <strong className={styles.featureName}>{f.name}</strong>
-                <span className={styles.featureBlurb}>{f.blurb}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
+        {selectedPlan === "pro" ? (
+          <ul className={styles.features}>
+            {(lead ? [lead, ...rest] : rest).map((f) => (
+              <li key={f.id} className={styles.feature}>
+                <span className={styles.tick} aria-hidden="true">
+                  <Icon name="check-square" size={14} />
+                </span>
+                <span>
+                  <strong className={styles.featureName}>{f.name}</strong>
+                  <span className={styles.featureBlurb}>{f.blurb}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={styles.plusPitch}>
+            Every AI tool's daily limit goes up — chat, notes, flashcards,
+            quizzes and the rest — nothing else changes. Upgrade to Pro any
+            time for Exam Trajectory, calendar sync, and the highest AI
+            ceiling.
+          </p>
+        )}
 
         {/* Said plainly, because it is the thing that makes the rest of this
             screen believable — and because it is true. */}

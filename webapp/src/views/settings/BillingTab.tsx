@@ -12,9 +12,20 @@ import {
   useRefreshSubscription,
 } from "../../hooks/useSubscription";
 import { BillingError } from "../../api/billing";
-import { PRO_FEATURES, formatPrice, PRICES } from "../../lib/entitlements";
+import {
+  PRO_FEATURES,
+  formatPrice,
+  PLAN_PRICING,
+  type Plan,
+} from "../../lib/entitlements";
 import { AiUsageMeter } from "./AiUsageMeter";
 import styles from "./settings.module.css";
+
+const PLAN_NAME: Record<Plan, string> = {
+  free: "Free",
+  plus: "Learnora Plus",
+  pro: "Learnora Pro",
+};
 
 /* Plan and billing.
  *
@@ -39,17 +50,26 @@ const STATUS_COPY: Record<string, string> = {
 };
 
 export function BillingTab() {
-  const { isPro, subscription, isPending } = useEntitlements();
+  const { plan, isPaid, subscription, isPending } = useEntitlements();
   const openPortal = useOpenBillingPortal();
   const refresh = useRefreshSubscription();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallInitialPlan, setPaywallInitialPlan] = useState<"plus" | "pro">(
+    "plus",
+  );
+
+  const openPaywall = (initialPlan: "plus" | "pro" = "plus") => {
+    setPaywallInitialPlan(initialPlan);
+    setPaywallOpen(true);
+  };
 
   /* Stripe sends the student back with ?checkout=success. The webhook usually
      wins the race, but not always — the onboarding screen we forward to does
      its own polling for the gap, so this only needs to fire the first read
-     and get out of the way. */
+     and get out of the way. Routed the same way for either paid plan: the
+     welcome screen itself reads which one actually landed and adapts. */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const outcome = params.get("checkout");
@@ -113,17 +133,15 @@ export function BillingTab() {
           <>
             <div className={styles.field}>
               <div className={styles.fieldLabel}>
-                <span className={styles.labelText}>
-                  {isPro ? "Learnora Pro" : "Free"}
-                </span>
+                <span className={styles.labelText}>{PLAN_NAME[plan]}</span>
                 <span className={styles.fieldDesc}>
-                  {isPro
+                  {isPaid
                     ? (STATUS_COPY[subscription.status] ?? "Active")
                     : "Everything in the core study system, at no cost."}
                 </span>
               </div>
               <div className={styles.fieldAction}>
-                {isPro ? (
+                {isPaid ? (
                   <>
                     <Button
                       variant="ghost"
@@ -140,11 +158,8 @@ export function BillingTab() {
                     </Button>
                   </>
                 ) : (
-                  <Button
-                    variant="primary"
-                    onClick={() => setPaywallOpen(true)}
-                  >
-                    Upgrade to Pro
+                  <Button variant="primary" onClick={() => openPaywall()}>
+                    Upgrade
                   </Button>
                 )}
               </div>
@@ -153,9 +168,9 @@ export function BillingTab() {
             {/* Directly under the plan, because the allowance is the most
                 concrete thing the plan buys — and the number a student
                 actually wants when they come here wondering about limits. */}
-            <AiUsageMeter isPro={isPro} />
+            <AiUsageMeter isPro={plan === "pro"} />
 
-            {isPro && renews ? (
+            {isPaid && renews ? (
               <div className={styles.field}>
                 <div className={styles.fieldLabel}>
                   <span className={styles.labelText}>
@@ -163,25 +178,47 @@ export function BillingTab() {
                   </span>
                   <span className={styles.fieldDesc}>
                     {subscription.cancelAtPeriodEnd
-                      ? `You have cancelled. Pro stays on until ${renews}.`
+                      ? `You have cancelled. ${PLAN_NAME[plan]} stays on until ${renews}.`
                       : `Next payment on ${renews}.`}
                   </span>
                 </div>
               </div>
             ) : null}
 
-            {!isPro ? (
+            {plan === "free" ? (
               <div className={styles.field}>
                 <div className={styles.fieldLabel}>
-                  <span className={styles.labelText}>What Pro adds</span>
+                  <span className={styles.labelText}>Plus and Pro</span>
                   <span className={styles.fieldDesc}>
-                    {PRO_FEATURES.map((f) => f.name).join(" · ")}
+                    Plus raises every AI tool's daily limit. Pro raises them
+                    further and adds {PRO_FEATURES.map((f) => f.name).join(" · ")}.
                   </span>
                 </div>
                 <div className={styles.fieldAction}>
                   <span className={styles.fieldValue}>
-                    from {formatPrice(PRICES[1].amountPence / 12)} a month
+                    Plus from{" "}
+                    {formatPrice(PLAN_PRICING.plus.prices[1].amountPence / 12)}
+                    /mo · Pro from{" "}
+                    {formatPrice(PLAN_PRICING.pro.prices[1].amountPence / 12)}
+                    /mo
                   </span>
+                </div>
+              </div>
+            ) : null}
+
+            {plan === "plus" ? (
+              <div className={styles.field}>
+                <div className={styles.fieldLabel}>
+                  <span className={styles.labelText}>What Pro adds</span>
+                  <span className={styles.fieldDesc}>
+                    {PRO_FEATURES.map((f) => f.name).join(" · ")}, and a
+                    higher ceiling on every AI tool.
+                  </span>
+                </div>
+                <div className={styles.fieldAction}>
+                  <Button variant="secondary" onClick={() => openPaywall("pro")}>
+                    See Pro
+                  </Button>
                 </div>
               </div>
             ) : null}
@@ -189,7 +226,11 @@ export function BillingTab() {
         )}
       </Card>
 
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <PaywallModal
+        open={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        initialPlan={paywallInitialPlan}
+      />
     </>
   );
 }
