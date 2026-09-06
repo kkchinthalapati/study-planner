@@ -180,14 +180,7 @@ type OpenAIProvider = {
 };
 
 const OPENAI_PROVIDERS: OpenAIProvider[] = [
-  {
-    id: "openai",
-    keyEnv: "OPENAI_API_KEY",
-    modelEnv: "OPENAI_MODEL",
-    defaultModel: "gpt-4o-mini",
-    url: "https://api.openai.com/v1/chat/completions",
-    jsonMode: true,
-  },
+  // Primary: Fast + high-quality reasoning (best for student experience)
   {
     id: "cloudflare",
     keyEnv: "CLOUDFLARE_API_TOKEN",
@@ -196,14 +189,7 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.cloudflare.com/client/v4/accounts/me/ai/run/",
     jsonMode: true,
   },
-  {
-    id: "cerebras",
-    keyEnv: "CEREBRAS_API_KEY",
-    modelEnv: "CEREBRAS_MODEL",
-    defaultModel: "gpt-oss-120b",
-    url: "https://api.cerebras.ai/v1/chat/completions",
-    jsonMode: true,
-  },
+  // Secondary: Extreme speed for time-sensitive requests
   {
     id: "groq",
     keyEnv: "GROQ_API_KEY",
@@ -212,6 +198,25 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.groq.com/openai/v1/chat/completions",
     jsonMode: true,
   },
+  // Tertiary: Highest reliability + quality for edge cases
+  {
+    id: "openai",
+    keyEnv: "OPENAI_API_KEY",
+    modelEnv: "OPENAI_MODEL",
+    defaultModel: "gpt-4o-mini",
+    url: "https://api.openai.com/v1/chat/completions",
+    jsonMode: true,
+  },
+  // Quaternary: Strong model for reasoning-heavy tasks
+  {
+    id: "cerebras",
+    keyEnv: "CEREBRAS_API_KEY",
+    modelEnv: "CEREBRAS_MODEL",
+    defaultModel: "gpt-oss-120b",
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    jsonMode: true,
+  },
+  // Quinary: Reliable fallback
   {
     id: "mistral",
     keyEnv: "MISTRAL_API_KEY",
@@ -220,6 +225,7 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     url: "https://api.mistral.ai/v1/chat/completions",
     jsonMode: true,
   },
+  // Senary: Free tier fallback
   {
     id: "github-models",
     keyEnv: "GITHUB_MODELS_TOKEN",
@@ -229,12 +235,11 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     extraHeaders: { "X-GitHub-Api-Version": "2026-03-10" },
     jsonMode: true,
   },
+  // Last resort: Free aggregator (slowest, weakest, but always available)
   {
     id: "openrouter",
     keyEnv: "OPENROUTER_API_KEY",
     modelEnv: "OPENROUTER_MODEL",
-    // Kept as the last resort: the free aggregator models are the weakest in
-    // the chain, so they only run when everything else is exhausted.
     // `meta-llama/llama-3-8b-instruct:free` was retired from OpenRouter's
     // catalog (404 "No endpoints found") — replaced with a model confirmed
     // live against https://openrouter.ai/api/v1/models on 2026-08-01.
