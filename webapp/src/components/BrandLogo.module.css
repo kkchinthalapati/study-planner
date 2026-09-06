@@ -1,0 +1,32 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.image {
+  /* Handle white background in the JPG by rendering on light backing */
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+
+.small .image {
+  width: 24px;
+  height: 24px;
+}
+
+.medium .image {
+  width: 40px;
+  height: 40px;
+}
+
+.large .image {
+  width: 56px;
+  height: 56px;
+}
+
+.text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}

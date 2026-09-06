@@ -22,6 +22,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { Icon } from "../../components/Icon";
+import { BrandLogo } from "../../components/BrandLogo";
 import type { IconName } from "../../components/icons";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import { useAuth } from "../../context/auth";
@@ -327,8 +328,7 @@ export function WelcomeView() {
       <div className={styles.shell}>
         <header className={styles.topBar}>
           <span className={styles.brand}>
-            <Icon name="learnora-mark" size={16} />
-            Learnora
+            <BrandLogo size="small" />
           </span>
           {step !== "done" && (
             <button type="button" className={styles.skipBtn} onClick={skip}>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
+import { BrandLogo } from "./BrandLogo";
 import type { IconName } from "./icons";
 import { useCreateModal } from "../context/createModal";
 import { useFlashcardsDueCount } from "../hooks/useFlashcards";
@@ -310,7 +311,7 @@ export function Sidebar({
       <div className={styles.brandRow}>
         <Link to="/" className={styles.brand} onClick={onNavigate}>
           <span className={styles.brandMark} aria-hidden="true">
-            <Icon name="learnora-mark" size={24} />
+            <BrandLogo size="small" />
           </span>
           <span className={styles.brandName}>Learnora</span>
         </Link>
