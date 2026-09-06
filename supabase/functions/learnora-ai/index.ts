@@ -189,6 +189,14 @@ const OPENAI_PROVIDERS: OpenAIProvider[] = [
     jsonMode: true,
   },
   {
+    id: "cloudflare",
+    keyEnv: "CLOUDFLARE_API_TOKEN",
+    modelEnv: "CLOUDFLARE_MODEL",
+    defaultModel: "deepseek-r1-distill-llama-70b",
+    url: "https://api.cloudflare.com/client/v4/accounts/me/ai/run/",
+    jsonMode: true,
+  },
+  {
     id: "cerebras",
     keyEnv: "CEREBRAS_API_KEY",
     modelEnv: "CEREBRAS_MODEL",
